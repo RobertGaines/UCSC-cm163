@@ -228,53 +228,47 @@ function init() {
 					fragmentShader: em_fs
 	} );
 	
-	var noobmaterial = new THREE.RawShaderMaterial( {
-					uniforms: uniforms2,
-					vertexShader: em_vs,
-					fragmentShader: em_fs
+	var noobmaterial = new THREE.MeshToonMaterial( {
+					color: 0x84836e
+					//uniforms: uniforms2,
+					//vertexShader: em_vs,
+					//fragmentShader: em_fs
 	} );
 	
 	var warthogmaterial = new THREE.MeshPhongMaterial( {
-					uniforms: uniforms2,
-					vertexShader: em_vs,
-					fragmentShader: em_fs
+					color: 0x298731
+					//uniforms: uniforms2,
+					//vertexShader: em_vs,
+					//fragmentShader: em_fs
 	} );
-	
+		
 
-	/*
-	var objTex = new THREE.TextureLoader().load( 'jaguar.png' );
-	var uniforms2 = {
-    			tex: { type: "t", value: objTex  },
-	};
-	
-
-     	material2 = new THREE.RawShaderMaterial( {
-			uniforms: uniforms2,
-            		vertexShader: tex_vs,
-            		fragmentShader: tex_fs,	
-	} );
-	*/
-
-			
-
-	var loader = new THREE.OBJLoader(  );
+	var loader = new THREE.OBJLoader();
+	var mtlLoader = new THREE.MTLLoader();
 				
-	loader.load( 'Warthog/WartHog.obj', function ( object ) {
-		object.traverse( function ( child ) {
-			if ( child instanceof THREE.Mesh ) {
-				child.material = warthogmaterial;
-			}
+	//mtlLoader.load( 'Warthog/WartHog.mtl', function (materials){	
+
+		//materials.preload();
+		//loader.setMaterials(materials);
+		
+		loader.load( 'Warthog/WartHog.obj', function (object){
+			object.traverse( function ( child ) {
+				if ( child instanceof THREE.Mesh ) {
+					child.material = warthogmaterial;
+				}
+			} );
+			
+			var s = 0.5;
+			object.scale.set( s, s, s );
+			object.position.x += 1.0;
+			object.position.y += -1.0;
+			object.rotation.x = -90 * (Math.PI/180);
+			
+			jaguar = object;
+			scene.add( jaguar );
 		} );
+	//Zz} );
 		
-		var s = 0.5;
-		object.scale.set( s, s, s );
-		object.position.x += 1.0;
-		object.position.y += -1.0;
-		object.rotation.x = -90 * (Math.PI/180);
-		
-		jaguar = object;
-		scene.add( jaguar );
-	} );
 				
 	loader.load( 'FuglyLink/model.obj', function ( object ) {
 		object.traverse( function ( child ) {
@@ -301,7 +295,24 @@ function init() {
 	box.scale.set(s, 100*s, s);
 	scene.add (box);
 
-
+	
+	//LIGHTS
+	//1) the sun (directionalLight)
+	var hiTaiyou = new THREE.DirectionalLight(0xffe993, 1); //yellowey
+	
+	//2) car light (spotLight)
+	//var hiKuruma = new THREE.SpotLight(0xffffff, 0.5);
+	
+	//3) reflecto-cube disco party light (point light)
+	//var hiMuImi = new THREE.SpotLight(0xffffff, 0.5);
+	
+	//4) ambient light ( " " )
+	var hiTankyou = new THREE.AmbientLight(0xd3d6ff, 1); //bluey
+	
+	scene.add(hiTaiyou);
+	//scene.add(hiTaiyou);
+	//scene.add(hiTaiyou);
+	scene.add(hiTankyou);
 
 	renderer = new THREE.WebGLRenderer();
 	renderer.setPixelRatio( window.devicePixelRatio );
