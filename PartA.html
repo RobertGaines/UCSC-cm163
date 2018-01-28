@@ -245,8 +245,9 @@ function init() {
 
 	var loader = new THREE.OBJLoader();
 	var mtlLoader = new THREE.MTLLoader(); //god, three.js doccumentation is a mess, MTLLoader has to be downloaded seperately GRRRR
-	THREE.ImageUtils.crossOrigin = 'use-credentials';
-	mtlLoader.setCrossOrigin('use-credentials');
+	THREE.ImageUtils.crossOrigin = '';
+	mtlLoader.setCrossOrigin('');
+	
 	loader.setPath('Warthog/');	
 	mtlLoader.setPath('Warthog/');			
 	mtlLoader.load( 'WartHog.mtl', function (materials){	
