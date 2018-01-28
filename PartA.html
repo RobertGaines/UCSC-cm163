@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 	<head>
-		<title>three.js webgl - blender -json</title>
+		<title>Yokohama Abstract Art Exhibit</title>
 		<meta charset="utf-8">
 		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 		<style>
@@ -164,7 +164,7 @@
 		var container;
 		var camera, scene, renderer;
 
-		var skyMesh, box, jaguar;
+		var skyMesh, box, jaguar, noob;
 
 		var texture1;
 
@@ -173,7 +173,7 @@
 
 
 
-		function init() {
+function init() {
 
 			container = document.getElementById( 'container' );
 
@@ -222,13 +222,19 @@
 	};
 
 
-	var material2 = new THREE.RawShaderMaterial( {
+	var reflectmaterial = new THREE.RawShaderMaterial( {
 					uniforms: uniforms2,
 					vertexShader: em_vs,
 					fragmentShader: em_fs
 	} );
 	
-	var warthogmaterial = new THREE.RawShaderMaterial( {
+	var noobmaterial = new THREE.RawShaderMaterial( {
+					uniforms: uniforms2,
+					vertexShader: em_vs,
+					fragmentShader: em_fs
+	} );
+	
+	var warthogmaterial = new THREE.MeshPhongMaterial( {
 					uniforms: uniforms2,
 					vertexShader: em_vs,
 					fragmentShader: em_fs
@@ -254,26 +260,45 @@
 	var loader = new THREE.OBJLoader(  );
 				
 	loader.load( 'Warthog/WartHog.obj', function ( object ) {
-		
 		object.traverse( function ( child ) {
 			if ( child instanceof THREE.Mesh ) {
 				child.material = warthogmaterial;
 			}
 		} );
 		
-		var s = 0.04;
+		var s = 0.5;
 		object.scale.set( s, s, s );
 		object.position.x += 1.0;
-		object.position.y += 0.0;
-
+		object.position.y += -1.0;
+		object.rotation.x = -90 * (Math.PI/180);
+		
 		jaguar = object;
 		scene.add( jaguar );
+	} );
+				
+	loader.load( 'FuglyLink/model.obj', function ( object ) {
+		object.traverse( function ( child ) {
+			if ( child instanceof THREE.Mesh ) {
+				child.material = noobmaterial;
+			}
+		} );
+		
+		var s = 5;
+		object.scale.set( s, s, s );
+		object.position.x += 1.0;
+		object.position.y += 0.2;
+
+		noob = object;
+		scene.add( noob );
 	} );
 
 
 	var gBox = new THREE.BoxGeometry( 1, 1, 1 );
-	box = new THREE.Mesh(gBox, material2);
-	box.position.x -= 1.0;
+	box = new THREE.Mesh(gBox, reflectmaterial);
+	box.position.x += -100.0;
+	box.position.z += -100.0;
+	var s = 80;
+	box.scale.set(s, 100*s, s);
 	scene.add (box);
 
 
@@ -310,8 +335,12 @@ var mouseY = 0.5;
 var prevMouseX = 0.5;
 var prevMouseY = 0.5;
 var mouseDown = 0;
+var jikan = -1; // aka time; aka framecount -> always is set as NaN for some reason
 
 function render() {
+	if (isNaN(jikan)) {
+		jikan = 0;
+	}
 
 	if (mouseX < prevMouseX && mouseDown == 1) {
 		//camera.rotateY(2*(mouseX - prevMouseX));
@@ -330,10 +359,24 @@ function render() {
 	prevMouseX = mouseX;
 	prevMouseY = mouseY;
 
-	box.rotation.y += 0.001;
-	box.rotation.x -= 0.002;
-	jaguar.rotation.y -= 0.001;
-	jaguar.rotation.x += 0.002;
+	box.position.x = 0 + 100*Math.sin(jikan/30);
+	box.position.z = 0 - 100*Math.sin(Math.PI/2 + jikan/30);
+	box.rotation.y += 0.01;
+	box.rotation.x -= 0.00;
+
+	//jaguar.rotation.x = -90 * (Math.PI/180);
+	jaguar.rotation.z += 0.1;
+	jaguar.position.x = -30 - 30*Math.sin(jikan/30);
+	jaguar.position.y =  -10 - 1*Math.sin(jikan/1);
+	jaguar.position.z = -30 + 30*Math.sin(jikan/30);
+	
+	noob.rotation.y += 0.1;
+	noob.position.x = -30 - 30*Math.sin(jikan/30);
+	noob.position.y =  8 + Math.abs(6*Math.sin(jikan/8));
+	noob.position.z = -30 + 30*Math.sin(jikan/30);
+	//console.log(jikan);
+	
+	jikan++;
 	renderer.render( scene, camera );
 }
 
