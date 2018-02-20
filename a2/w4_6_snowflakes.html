@@ -1,0 +1,255 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<title>three.js webgl - custom attributes [particles]</title>
+		<meta charset="utf-8">
+		<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+		<style>
+			body {
+				color: #ffffff;
+				font-family:Monospace;
+				font-size:13px;
+				text-align:center;
+				font-weight: bold;
+
+				background-color: #000000;
+				margin: 0px;
+				overflow: hidden;
+			}
+			#info {
+				color: #fff;
+				position: absolute;
+				top: 0px; width: 100%;
+				padding: 5px;
+				z-index:100;
+			}
+			a { color: #ff0000 }
+		</style>
+	</head>
+
+	<body>
+		<div id="container"></div>
+
+		<script src="js/three.js"></script>
+		<script src="js/OrbitControls.js"></script>
+
+
+		<script type="x-shader/x-vertex" id="vertexshader">
+
+			precision highp float;
+
+			uniform float amplitude;
+			attribute float size;
+			attribute vec3 customColor;
+			attribute float spriteNum;
+
+			varying vec3 vColor;
+			varying float vWhichSprite;
+
+			void main() {
+
+				vColor = customColor;
+
+				vWhichSprite = spriteNum;
+
+				vec4 mvPosition = modelViewMatrix * vec4( position, 1.0 );
+
+				gl_PointSize = size * ( 300.0 / -mvPosition.z );
+
+				gl_Position = projectionMatrix * mvPosition;
+
+			}
+
+		</script>
+
+		<script type="x-shader/x-fragment" id="fragmentshader">
+
+			precision highp float;
+			
+			uniform vec3 color;
+			uniform sampler2D texture1;
+			uniform sampler2D texture2;
+			uniform sampler2D texture3;
+			uniform sampler2D texture4;
+			uniform sampler2D texture5;
+
+			varying vec3 vColor;
+			varying float vWhichSprite;
+
+			void main() {
+
+
+				vec4 tCol; 
+
+				if (vWhichSprite == 0.0) {
+					tCol = texture2D( texture1, gl_PointCoord );
+				} else if (vWhichSprite == 1.0) {
+					tCol = texture2D( texture2, gl_PointCoord );
+				} else if (vWhichSprite == 2.0) {
+					tCol = texture2D( texture3, gl_PointCoord );
+				} else if (vWhichSprite == 3.0) {
+					tCol = texture2D( texture4, gl_PointCoord );
+				} else  {
+					tCol = texture2D( texture5, gl_PointCoord );
+				}
+
+				gl_FragColor = vec4( color * vColor, 1.0 );
+				gl_FragColor = gl_FragColor * tCol;
+
+			}
+
+		</script>
+
+
+		<script>
+
+		var renderer, scene, camera;
+
+		var boxOfPoints;
+
+		var WIDTH = window.innerWidth;
+		var HEIGHT = window.innerHeight;
+
+		var textureLoader = new THREE.TextureLoader();
+		
+		var sprite0 = textureLoader.load( "snowflake1.png" );
+		var sprite1 = textureLoader.load( "snowflake2.png" );
+		var sprite2 = textureLoader.load( "snowflake3.png" );
+		var sprite3 = textureLoader.load( "snowflake4.png" );
+		var sprite4 = textureLoader.load( "snowflake5.png" );
+		
+		init();
+		animate();
+
+	
+		function init() {
+
+			camera = new THREE.PerspectiveCamera( 40, WIDTH / HEIGHT, 1, 10000 );
+			camera.position.z = 300;
+			var controls = new THREE.OrbitControls( camera );
+
+
+			scene = new THREE.Scene();
+
+			//initialize point attributes
+
+			var amount = 100000;
+			var radius = 200;
+
+			var positions = new Float32Array( amount * 3 );
+			var colors = new Float32Array( amount * 3 );
+			var sizes = new Float32Array( amount );
+			var spriteNums = new Float32Array( amount );
+
+			var vertex = new THREE.Vector3();
+			var color = new THREE.Color( 0xffffff );
+
+			for ( var i = 0; i < amount; i ++ ) {
+
+				vertex.x = ( Math.random() * 2 - 1 ) * radius;
+				vertex.y = ( Math.random() * 2 - 1 ) * radius;
+				vertex.z = ( Math.random() * 2 - 1 ) * radius;
+				vertex.toArray( positions, i * 3 );
+
+				color.setHSL(1.0, 0.2, 0.5);
+
+				color.toArray( colors, i * 3 );
+
+				sizes[ i ] = 40;
+				spriteNums[ i ] = Math.floor(Math.random() * 5.0);
+				
+
+			}
+
+			var geometry = new THREE.BufferGeometry();
+			geometry.addAttribute( 'position', new THREE.BufferAttribute( positions, 3 ) );
+			geometry.addAttribute( 'customColor', new THREE.BufferAttribute( colors, 3 ) );
+			geometry.addAttribute( 'size', new THREE.BufferAttribute( sizes, 1 ) );
+			geometry.addAttribute( 'spriteNum', new THREE.BufferAttribute( spriteNums, 1 ) );
+
+			//
+
+			var material = new THREE.ShaderMaterial( {
+
+				uniforms: {
+					color:     { type: "v3", value: new THREE.Color( 0xffffff ) },
+					texture1:  { type: "t", value: sprite0 },
+					texture2:  { type: "t", value: sprite1 },
+					texture3:  { type: "t", value: sprite2 },
+					texture4:  { type: "t", value: sprite3 },
+					texture5:  { type: "t", value: sprite4 }
+				},
+				vertexShader:   document.getElementById( 'vertexshader' ).textContent,
+				fragmentShader: document.getElementById( 'fragmentshader' ).textContent,
+
+				blending:       THREE.AdditiveBlending,
+				depthTest:      false,
+				transparent:    true
+
+			});
+
+			//
+
+			boxOfPoints = new THREE.Points( geometry, material );
+			scene.add( boxOfPoints );
+
+			//
+
+			renderer = new THREE.WebGLRenderer();
+			renderer.setPixelRatio( window.devicePixelRatio );
+			renderer.setSize( WIDTH, HEIGHT );
+
+			var container = document.getElementById( 'container' );
+			container.appendChild( renderer.domElement );
+
+			//
+
+			window.addEventListener( 'resize', onWindowResize, false );
+
+		}
+
+		function onWindowResize() {
+
+			camera.aspect = window.innerWidth / window.innerHeight;
+			camera.updateProjectionMatrix();
+
+			renderer.setSize( window.innerWidth, window.innerHeight );
+
+		}
+
+		function animate() {
+
+			requestAnimationFrame( animate );
+
+			render();
+
+		}
+
+		function render() {
+
+			var time = Date.now() * 0.00005;
+
+			//boxOfPoints.rotation.z = 0.01 * time;
+
+			var geometry = boxOfPoints.geometry;
+			var attributes = geometry.attributes;
+
+			for ( var i = 0; i < attributes.size.array.length; i++ ) {
+
+				attributes.size.array[ i ] = 14 + 13 * Math.sin( 0.1 * i + time );
+
+			}
+
+						
+
+			attributes.size.needsUpdate = true;
+
+			renderer.render( scene, camera );
+
+		}
+
+	</script>
+
+</body>
+
+</html>
