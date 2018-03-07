@@ -2,7 +2,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-	<title>three.js - gpu particle system</title>
+	<title>Physically Unrealistic Falls</title>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
 	<style>
@@ -41,145 +41,719 @@
 
 	<script src="./js/three.js"></script>
 	<script src="./js/dat.gui.min.js"></script>
-	<script src="./js/TrackballControls.js"></script>
-	<script src="./js/GPUParticleSystem.js"></script>
+	<script src="js/OrbitControls.js"></script>
+	<script src="./js/GPUParticleSystemFIX.js"></script>
+	<script src="js/stats.js"></script>
+
+	<script id="vertexShader" type="x-shader/x-vertex">
+
+	uniform mat4 modelMatrix;
+	uniform mat4 viewMatrix;
+    uniform mat4 projectionMatrix;
+	uniform sampler2D tPic;
+
+    attribute vec3 position;
+	attribute vec2 uv;
+	attribute vec3 normal;
+
+	uniform float displaceAmt; //controls the amount of vertex displacement...
+	
+    varying float vDisplace; 
+	varying vec2 vUv;
+
+    precision mediump float;
+	
+	//reflect stuff
+	uniform vec3 cameraPosition;
+	varying vec3 vI;
+	varying vec3 vWorldNormal;
+
+	void main() {
+       
+		vUv = uv;
+		
+		vec4 clr = texture2D(tPic, uv);
+		vDisplace = 0.333 * (clr.r+clr.g+clr.b) * 2.0/*displaceAmt*/; //displacement;
+		vec3 offset = vec3(0.0, 0.0, -0.52); // GLSL z axis is vertical apparently
+		vec3 newPosition = (offset + position.xyz + normal.xyz * vDisplace).xyz;
+  
+		gl_Position = projectionMatrix  * viewMatrix * modelMatrix  * vec4( newPosition, 1.0 );
+		
+		//reflect stuff
+		vec4 mvPosition = viewMatrix * modelMatrix * vec4( position, 1.0 );
+  		vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
+
+  		vWorldNormal = normalize( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
+
+  		vI = worldPosition.xyz - cameraPosition;
+
+  		//gl_Position = projectionMatrix * mvPosition;
+        }
+
+	</script>
+
+	<script id="fragmentShader" type="x-shader/x-fragment">
+
+	//FYI: most of the stuff in here is GLSL API calls
+	precision mediump float;
+
+	uniform sampler2D tGrass, tSnow, tHill;
+
+	//attribute vec2 uv; not fucking worth it
+	varying vec2 vUv;
+	varying float vDisplace; //this /has/ to be passed from the vtx shader then
+
+    void main() {
+		//vUv = uv*8.0; 
+		vec4 grass = texture2D(tGrass, vUv);
+		vec4 snow = texture2D(tSnow, vUv);
+		vec4 hill = texture2D(tHill, vUv);
+
+		float zOffset = vDisplace * 0.80;
+
+		vec4 mix1 = mix(grass, hill, min(1.0,zOffset*1.0));
+		vec4 mix2 = max(vec4(1.0), mix(hill, snow, zOffset) * 1.5);
+		vec4 mix3 = mix(mix1, mix2, zOffset);
+
+		gl_FragColor = vec4( grass.rgb, 1.0 ); //alpha here doesnt matter 
+   }
+
+	</script>
+	
+	<script id="dementoMizuFS" type="x-shader/x-fragment">
+
+	//FYI: most of the stuff in here is GLSL API calls
+	precision mediump float;
+
+	uniform sampler2D tGrass, tSnow, tHill;
+
+	//attribute vec2 uv; not fucking worth it
+	varying vec2 vUv;
+	varying float vDisplace; //this /has/ to be passed from the vtx shader then
+	
+	//reflect stuff
+	uniform samplerCube envMap;
+	varying vec3 vI, vWorldNormal;
+	
+    void main() {
+		vec3 reflection = reflect( vI, vWorldNormal );
+		vec4 envColor = textureCube( envMap, vec3( -reflection.x, reflection.yz ) );
+		//gl_FragColor = vec4(envColor); // this is where you get the stupid drawArrays GL error
+	
+		//vUv = uv*8.0; 
+		vec4 grass = texture2D(tGrass, vUv);
+		vec4 snow = texture2D(tSnow, vUv);
+		vec4 hill = texture2D(tHill, vUv);
+
+		float zOffset = vDisplace * 0.80;
+
+		vec4 mix1 = mix(grass, hill, min(1.0,zOffset*1.0));
+		vec4 mix2 = max(vec4(1.0), mix(hill, snow, zOffset) * 1.5);
+		vec4 mix3 = mix(mix1, mix2, zOffset);
+
+
+		//gl_FragColor = vec4( grass.rgb, 1.0 ); //alpha here doesnt matter 
+		
+   }
+
+	</script>
+	
+	<script id="environmentMapVS" type="x-shader/x-vertex">
+
+	uniform mat4 modelMatrix;
+	uniform mat4 viewMatrix;
+    uniform mat4 projectionMatrix;
+
+	uniform vec3 cameraPosition;
+	
+	attribute vec3 position; 
+	attribute vec3 normal; 
+
+	varying vec2 vUv; ////
+	varying vec3 vI;
+	varying vec3 vWorldNormal;
+
+	void main() {
+  		vec4 mvPosition = viewMatrix * modelMatrix * vec4( position, 1.0 );
+  		vec4 worldPosition = modelMatrix * vec4( position, 1.0 );
+
+  		vWorldNormal = normalize( mat3( modelMatrix[0].xyz, modelMatrix[1].xyz, modelMatrix[2].xyz ) * normal );
+
+  		vI = worldPosition.xyz - cameraPosition;
+
+  		gl_Position = projectionMatrix * mvPosition;
+	}	
+  
+	</script>
+
+	<script id="environmentMapFS" type="x-shader/x-fragment">
+
+	precision mediump float;
+
+	uniform samplerCube envMap;
+
+	varying vec3 vI, vWorldNormal;
+
+	void main() {
+		vec3 reflection = reflect( vI, vWorldNormal );
+		vec4 envColor = textureCube( envMap, vec3( -reflection.x, reflection.yz ) );
+		gl_FragColor = vec4(envColor);
+	}
+
+	</script>
+
+	<script id="noiseVS" type="x-shader/x-vertex">
+
+	uniform mat4 modelMatrix;
+	uniform mat4 viewMatrix;
+    uniform mat4 projectionMatrix;
+
+    attribute vec3 position;
+	attribute vec3 normal;
+
+    uniform float in_val; //a value that changes slowly over time...
+	uniform float displaceAmt; //controls the amount of vertex displacement...
+	uniform float turbulenceAmt; 
+	uniform float rollingWaveSize; 
+	uniform float roughWaveSize; 
+	
+    varying float noiseVal, noiseVal2;
+
+	// >>>> height map vars <<<<
+	//uniform mat4 modelMatrix;
+	//uniform mat4 viewMatrix;
+    //uniform mat4 projectionMatrix;
+	uniform sampler2D tPic;
+
+    //attribute vec3 position;
+	attribute vec2 uv;
+	//attribute vec3 normal;
+
+	//uniform float displaceAmt; //controls the amount of vertex displacement...
+	
+    varying float vDisplace; 
+	varying vec2 vUv;
+
+vec3 mod289(vec3 x)
+{
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec4 mod289(vec4 x)
+{
+  return x - floor(x * (1.0 / 289.0)) * 289.0;
+}
+
+vec4 permute(vec4 x)
+{
+  return mod289(((x*34.0)+1.0)*x);
+}
+
+vec4 taylorInvSqrt(vec4 r)
+{
+  return 1.79284291400159 - 0.85373472095314 * r;
+}
+
+vec3 fade(vec3 t) {
+  return t*t*t*(t*(t*6.0-15.0)+10.0);
+}
+
+// Classic Perlin noise, periodic variant
+float pnoise(vec3 P, vec3 rep)
+{
+  vec3 Pi0 = mod(floor(P), rep); // Integer part, modulo period
+  vec3 Pi1 = mod(Pi0 + vec3(1.0), rep); // Integer part + 1, mod period
+  Pi0 = mod289(Pi0);
+  Pi1 = mod289(Pi1);
+  vec3 Pf0 = fract(P); // Fractional part for interpolation
+  vec3 Pf1 = Pf0 - vec3(1.0); // Fractional part - 1.0
+  vec4 ix = vec4(Pi0.x, Pi1.x, Pi0.x, Pi1.x);
+  vec4 iy = vec4(Pi0.yy, Pi1.yy);
+  vec4 iz0 = Pi0.zzzz;
+  vec4 iz1 = Pi1.zzzz;
+  
+  vec4 ixy = permute(permute(ix) + iy);
+  vec4 ixy0 = permute(ixy + iz0);
+  vec4 ixy1 = permute(ixy + iz1);
+  
+  vec4 gx0 = ixy0 * (1.0 / 7.0);
+  vec4 gy0 = fract(floor(gx0) * (1.0 / 7.0)) - 0.5;
+  gx0 = fract(gx0);
+  vec4 gz0 = vec4(0.5) - abs(gx0) - abs(gy0);
+  vec4 sz0 = step(gz0, vec4(0.0));
+  gx0 -= sz0 * (step(0.0, gx0) - 0.5);
+  gy0 -= sz0 * (step(0.0, gy0) - 0.5);
+  
+  vec4 gx1 = ixy1 * (1.0 / 7.0);
+  vec4 gy1 = fract(floor(gx1) * (1.0 / 7.0)) - 0.5;
+  gx1 = fract(gx1);
+  vec4 gz1 = vec4(0.5) - abs(gx1) - abs(gy1);
+  vec4 sz1 = step(gz1, vec4(0.0));
+  gx1 -= sz1 * (step(0.0, gx1) - 0.5);
+  gy1 -= sz1 * (step(0.0, gy1) - 0.5);
+  
+  vec3 g000 = vec3(gx0.x,gy0.x,gz0.x);
+  vec3 g100 = vec3(gx0.y,gy0.y,gz0.y);
+  vec3 g010 = vec3(gx0.z,gy0.z,gz0.z);
+  vec3 g110 = vec3(gx0.w,gy0.w,gz0.w);
+  vec3 g001 = vec3(gx1.x,gy1.x,gz1.x);
+  vec3 g101 = vec3(gx1.y,gy1.y,gz1.y);
+  vec3 g011 = vec3(gx1.z,gy1.z,gz1.z);
+  vec3 g111 = vec3(gx1.w,gy1.w,gz1.w);
+  
+  vec4 norm0 = taylorInvSqrt(vec4(dot(g000, g000), dot(g010, g010), dot(g100, g100), dot(g110, g110)));
+  g000 *= norm0.x;
+  g010 *= norm0.y;
+  g100 *= norm0.z;
+  g110 *= norm0.w;
+  vec4 norm1 = taylorInvSqrt(vec4(dot(g001, g001), dot(g011, g011), dot(g101, g101), dot(g111, g111)));
+  g001 *= norm1.x;
+  g011 *= norm1.y;
+  g101 *= norm1.z;
+  g111 *= norm1.w;
+  
+  float n000 = dot(g000, Pf0);
+  float n100 = dot(g100, vec3(Pf1.x, Pf0.yz));
+  float n010 = dot(g010, vec3(Pf0.x, Pf1.y, Pf0.z));
+  float n110 = dot(g110, vec3(Pf1.xy, Pf0.z));
+  float n001 = dot(g001, vec3(Pf0.xy, Pf1.z));
+  float n101 = dot(g101, vec3(Pf1.x, Pf0.y, Pf1.z));
+  float n011 = dot(g011, vec3(Pf0.x, Pf1.yz));
+  float n111 = dot(g111, Pf1);
+  
+  vec3 fade_xyz = fade(Pf0);
+  vec4 n_z = mix(vec4(n000, n100, n010, n110), vec4(n001, n101, n011, n111), fade_xyz.z);
+  vec2 n_yz = mix(n_z.xy, n_z.zw, fade_xyz.y);
+  float n_xyz = mix(n_yz.x, n_yz.y, fade_xyz.x);
+  return 2.2 * n_xyz;
+}
+
+float turbulence( vec3 p ) {
+  float w = 100.0;
+  float t = -.5;
+  for (float f = 1.0 ; f <= 10.0 ; f++ ){
+    float power = pow( 2.0, f );
+    t += abs( pnoise( vec3( power * p ), vec3( 10.0, 10.0, 10.0 ) ) / power );
+  }
+  return t;
+}
+
+
+
+void main()	{
+	//   >>>> heightmap stuff <<<<
+	vUv = uv;
+	vec4 clr = texture2D(tPic, uv);
+	vDisplace = 0.333 * (clr.r+clr.g+clr.b) * 2.0/*displaceAmt*/; //displacement;
+	vec3 offset = vec3(0.0, 0.0, -0.52); // GLSL z axis is vertical apparently
+	//vec3 newPosition = (offset + position.xyz + normal.xyz * vDisplace).xyz;
+	//newPosition = newPosition + (offset + normal.xyz * vDisplace).xyz;
+	//   >>>> END heightmap stuff <<<<
+
+	// get a 3d noise using the position, low frequency
+	float lowFreq = rollingWaveSize * 
+		(0.1 /(log(vDisplace+0.6))) * 
+		pnoise( position.xyz + vec3(in_val), vec3(10.0) ); //1.0, , 10.0
+
+	// get a turbulent 3d noise using the normal, normal to high freq
+	float highFreq = roughWaveSize * 
+		(200.0*turbulenceAmt) * 
+		-1.0 * 
+		turbulence( 1.5 * (position.xyz + vec3(in_val)) * 
+		(200.0*turbulenceAmt)); //-.5, 0.7
+
+
+	//add high freq noise + low freq noise together
+	//  float displacement = lowFreq;
+	//  float displacement = highFreq;
+	float displacement = (lowFreq + highFreq) * displaceAmt;
+
+
+	noiseVal = highFreq;
+	noiseVal2 = lowFreq;
+	// move the position along the normal and transform it
+	vec3 newPosition = (position.xyz + normal.xyz * displacement).xyz;
+
+	//gl_Position = projectionMatrix  * viewMatrix * modelMatrix  * vec4( newPosition, 1.0 );
+	////// gl_Position = projectionMatrix * viewMatrix * modelMatrix  * vec4( position, 1.0 );
+	
+	//   >>>> heightmap stuff again <<<<
+	newPosition = newPosition + (offset + normal.xyz * vDisplace).xyz;
+	gl_Position = projectionMatrix  * viewMatrix * modelMatrix  * vec4( newPosition, 1.0 );
+  }
+
+		</script>
+
+	<script id="noiseFS" type="x-shader/x-fragment">
+
+	precision mediump float;
+	
+	varying float noiseVal;
+	varying float noiseVal2;
+
+	//heightmap stuff
+	//precision mediump float;
+	//uniform sampler2D tGrass, tSnow, tHill;
+	varying vec2 vUv;
+	varying float vDisplace;
+
+    void main()	{
+
+        //vec3 red = vec3( 1.0 * ( 1.0 - (3.0 * noiseVal) ), 0.0, 0.0 );
+        //vec3 green = vec3( 1.0, 1.0 * ( 1.0 - (3.0 * noiseVal2) ), 0.0 );
+		float aoiBase = 0.5 * ( 1.0 - (1.0 * noiseVal));
+		vec3 aoi = vec3(0.0, 0.0 + 1.0*aoiBase, 0.3 + aoiBase); //small noise
+		float haiIroBase = 0.2 - (0.1 * ( 1.0 - (4.0 * noiseVal2) )); //big noise
+        vec3 haiIro = vec3(haiIroBase, haiIroBase, haiIroBase);
+		
+        gl_FragColor = vec4( aoi.rgb + haiIro.rgb, 1.0 );        
+		
+		//heightmap stuff
+		//vec4 grass = texture2D(tGrass, vUv);
+		//vec4 snow = texture2D(tSnow, vUv);
+		//vec4 hill = texture2D(tHill, vUv);
+
+		float zOffset = vDisplace * 0.80;
+
+		//vec4 mix1 = mix(grass, hill, min(1.0,zOffset*1.0));
+		//vec4 mix2 = max(vec4(1.0), mix(hill, snow, zOffset) * 1.5);
+		//ec4 mix3 = mix(mix1, mix2, zOffset);
+
+		//gl_FragColor = vec4( grass.rgb, 1.0 ); //alpha here doesnt matter 
+	}
+
+		</script>
 
 	<script>
-		var camera, tick = 0,
-			scene, renderer, clock = new THREE.Clock(),
-			controls, container, gui = new dat.GUI( { width: 350 } ),
-			options, spawnerOptions, particleSystem;
+var camera, tick = 0,
+	scene, renderer, clock = new THREE.Clock(),
+	controls, container, gui = new dat.GUI( { width: 350 } ),
+	options, spawnerOptions, particleSystem;
 
-		init();
-		animate();
+var vs = document.getElementById( 'vertexShader' ).textContent;
+var fs = document.getElementById( 'fragmentShader' ).textContent;
+var dmfs = document.getElementById( 'dementoMizuFS' ).textContent;
+var em_vs = document.getElementById( 'environmentMapVS' ).textContent;
+var em_fs = document.getElementById( 'environmentMapFS' ).textContent;
+	
+var texture1 = new THREE.TextureLoader().load( '地図/滝川V5.png' );
+var mizuTakasa = new THREE.TextureLoader().load( '地図/滝川水V4.png' );
+var texture2 = new THREE.TextureLoader().load( '地形テキスチャ/hill.jpg' );
+//var texture4 = new THREE.TextureLoader().load( '地形テキスチャ/grass.png' );
+//var texture3 = new THREE.TextureLoader().load( '地形テキスチャ/緑木-patternpictures.jpg' );
 
-		function init() {
+//var sand = new THREE.TextureLoader().load( "粒子/砂V1.png" );
+var swirl = new THREE.TextureLoader().load( "粒子/螺旋-らせん.png" );
+init();
+animate();
 
-			//
+function init() {
 
-			container = document.getElementById( 'container' );
+	//
 
-			camera = new THREE.PerspectiveCamera( 28, window.innerWidth / window.innerHeight, 1, 10000 );
-			camera.position.z = 100;
+	container = document.getElementById( 'container' );
 
-			scene = new THREE.Scene();
+	camera = new THREE.PerspectiveCamera( 50, window.innerWidth / window.innerHeight, 0.1, 9001 );
+	camera.position.z = 100;
 
-			// The GPU Particle system extends THREE.Object3D, and so you can use it
-			// as you would any other scene graph component.	Particle positions will be
-			// relative to the position of the particle system, but you will probably only need one
-			// system for your whole scene
+	scene = new THREE.Scene();
+	var loader = new THREE.CubeTextureLoader();
+	loader.setPath('RobloxSkybox/');
+	scene.background = loader.load(['前.png','後ろ.png',
+									'上.png', '下.png',
+									'右.png', '左.png']);
+							
+	var geometry1 = new THREE.PlaneGeometry(5, 5, 256, 256);
+	var oceanGeo  = new THREE.PlaneGeometry(5, 5, 192, 192);
+	
+	// WATER REFLECT (thank god for stemkoski)
+	//var sphereGeom =  new THREE.SphereGeometry( 3, 32, 16 ); // radius, segmentsWidth, segmentsHeight
+	//mirrorSphereCamera = new THREE.CubeCamera( 0.01, 9000, 512 ); // (近い、遠い、resolution)
+	//scene.add( mirrorSphereCamera );
+	//var mirrorSphereMaterial = new THREE.MeshBasicMaterial( { envMap: mirrorSphereCamera.renderTarget.texture } );
+	//mirrorSphere = new THREE.Mesh( sphereGeom, mirrorSphereMaterial );
+	//mirrorSphere.position.set(0, 10 ,0);
+	//mirrorSphereCamera.position = mirrorSphere.position;
+	//scene.add(mirrorSphere);
+	
+	var uniformTerrain =  {
+		displaceAmt: { type: "f", value: 0.0 },
+		tPic: { type: "t", value: texture1  },
+		tGrass: { type: "t", value: texture2  },
+		tSnow: { type: "t", value: texture2  },
+		tHill: { type: "t", value: texture2  },
+	};
+	
+	/*
+	var uniformMizuMap =  {
+		displaceAmt: {type: "f", value: 0.0},
+		tPic: {type: "t", value: mizuTakasa},
+		tCube: {type: "t", value: loader}, //gets same textures as skybox
+		
+		tGrass: { type: "t", value: texture3  },
+		tSnow: { type: "t", value: texture2  },
+		tHill: { type: "t", value: texture4  },
+	};*/
+	
+	var uniformNoiseMap =  {
+		in_val:  { type: "f", value: 0.0 },
+		displaceAmt: { type: "f", value: 0.08 }, 
+		turbulenceAmt: { type: "f", value: 0.005 },
+		rollingWaveSize: { type: "f", value: 1.0 },
+		roughWaveSize: { type: "f", value: 1.0 },
+		tPic: {type: "t", value: mizuTakasa},
+	};
+	
+	/*
+	var uniformReflect = {
+		tCube: { type: "t", value: loader } //gets same textures as skybox
+	};*/
 
-			particleSystem = new THREE.GPUParticleSystem( {
-				maxParticles: 250000
-			} );
+	var terrainMat = new THREE.RawShaderMaterial( {
+		uniforms: uniformTerrain,
+		vertexShader: vs,
+		fragmentShader: fs,
+	} );
 
-			scene.add( particleSystem );
+	/*var mizuMat = new THREE.RawShaderMaterial( {
+		uniforms: uniformMizuMap,
+		vertexShader: vs,
+		fragmentShader: dmfs,//dmfs,
+		//envMap: mirrorSphereCamera.renderTarget.texture
+	} );*/
+	
+	/*
+	var oceanMat = new THREE.RawShaderMaterial( {
+		uniforms: uniformReflect,
+		vertexShader: em_vs,
+		fragmentShader: em_fs
+	} );*/
+	
+	var noiseWaterMat = new THREE.RawShaderMaterial({
+		uniforms: uniformNoiseMap,
+		vertexShader: document.getElementById( 'noiseVS' ).textContent,
+		fragmentShader: document.getElementById( 'noiseFS' ).textContent,
+	});
+	
+	/*var mizuMatArray = [
+		mizuMat,
+		//new THREE.MeshBasicMaterial( { envMap: mirrorSphereCamera.renderTarget.texture } ),
+		noiseWaterMat,
+	];
+	//set the material index of each face so a merge knows which material to apply
+	for ( var i = 0; i < (oceanGeo.faces.length + 42)/2; i ++ ) {
+		oceanGeo.faces[i].materialIndex = mizuMatArray.length-1;
+	}*/
+	
+	mesh1 = new THREE.Mesh(geometry1, terrainMat);
+	mesh1.material.side = THREE.DoubleSide;
+	mesh1.rotateX(-Math.PI/2);
+	//geometry1.position.set(0.0, -2.0, 0.0); set from shader at top
+	scene.add( mesh1 );
+	
+	oceanMesh = new THREE.Mesh(oceanGeo, noiseWaterMat);
+	oceanMesh.material.side = THREE.DoubleSide;
+	oceanMesh.rotateX(-Math.PI/2);
+	//oceanMesh.position.y += 0.5
+	oceanMesh.position.set(0.0, -0.0, 0.0);
+	scene.add(oceanMesh);
+	
+	//LIGHTS
+	//1) the sun (directionalLight)
+	hiTaiyou = new THREE.DirectionalLight(0xffffff, 2); //yellowey
+	hiTaiyou.position.set(13, 10, 0);
+	hiTaiyou.shadowCameraVisible = true;
+	GLOBALhiTaiyou = hiTaiyou
+	
+	scene.add(hiTaiyou);
+	
+	
+	// The GPU Particle system extends THREE.Object3D, and so you can use it
+	// as you would any other scene graph component.	Particle positions will be
+	// relative to the position of the particle system, but you will probably only need one
+	// system for your whole scene
 
-			// options passed during each spawned
+	particleSystem = new THREE.GPUParticleSystem( {
+		maxParticles: 250000,
+		particleSpriteTex: swirl,
+		//positionStart: new THREE.Vector3(3.0, 1.7, 0.0),
+	} );
 
-			options = {
-				position: new THREE.Vector3(),
-				positionRandomness: .3,
-				velocity: new THREE.Vector3(),
-				velocityRandomness: .5,
-				color: 0xaa88ff,
-				colorRandomness: .2,
-				turbulence: .5,
-				lifetime: 2,
-				size: 5,
-				sizeRandomness: 1
-			};
+	scene.add( particleSystem );
 
-			spawnerOptions = {
-				spawnRate: 15000,
-				horizontalSpeed: 1.5,
-				verticalSpeed: 1.33,
-				timeScale: 1
-			};
+	// options passed during each spawned
+	options = {
+		position: new THREE.Vector3(),
+		positionRandomness: .25,
+		velocity: new THREE.Vector3(),
+		velocityRandomness: 0.05, //.5,
+		color: 0x68b6ff,
+		colorRandomness: .35,
+		turbulence: 0.005, //.5
+		lifetime: 4, //2,
+		size: 20, //5,
+		sizeRandomness: 1,
+		
+		rollingWaveSize: 1,
+		roughWaveSize: 1,
+		//windSpeed: 5,
+		//sandColor: [128, 128, 0],
+		//windDirection: 180
+		//resetMap: false,
+		//erosionSpeed: 5
+	};
 
-			//
+	spawnerOptions = {
+		spawnRate: 200,//15000,
+		horizontalSpeed: 0.03,
+		verticalSpeed: 0.02,
+		timeScale: 1
+	};
 
-			gui.add( options, "velocityRandomness", 0, 3 );
-			gui.add( options, "positionRandomness", 0, 3 );
-			gui.add( options, "size", 1, 20 );
-			gui.add( options, "sizeRandomness", 0, 25 );
-			gui.add( options, "colorRandomness", 0, 1 );
-			gui.add( options, "lifetime", .1, 10 );
-			gui.add( options, "turbulence", 0, 1 );
+	//
 
-			gui.add( spawnerOptions, "spawnRate", 10, 30000 );
-			gui.add( spawnerOptions, "timeScale", -1, 1 );
+	//gui.add( options, "velocityRandomness", 0, 0.4 ); //0 3
+	//gui.add( options, "positionRandomness", 0, 3 );
+	//gui.add( options, "sizeRandomness", 0, 25 );
+	var f1 = gui.addFolder('Particles');
+	f1.add( options, "size", 4, 64 );
+	f1.add( options, "colorRandomness", 0, 1 );
+	f1.add( options, "lifetime", .1, 10 );
+	f1.add( spawnerOptions, "spawnRate", 1, 2000 );
+	
+	var f2 = gui.addFolder('Water');
+	f2.add( options, "rollingWaveSize", 0.0, 5.0 );
+	f2.add( options, "roughWaveSize", 0.0, 5.0 );
+	
+	var f3 = gui.addFolder('Both');
+	f3.add( options, "turbulence", 0.0, 0.015 );
+	f3.add( spawnerOptions, "timeScale", -2.0, 4.0 );
 
-			//
+	
+	// STATS
+	stats = new Stats(); 
+	stats.showPanel(0);
+	document.body.appendChild( stats.dom );
 
-			//
+	renderer = new THREE.WebGLRenderer();
+	renderer.setPixelRatio( window.devicePixelRatio );
+	renderer.setSize( window.innerWidth, window.innerHeight );
+	container.appendChild( renderer.domElement );
 
-			renderer = new THREE.WebGLRenderer();
-			renderer.setPixelRatio( window.devicePixelRatio );
-			renderer.setSize( window.innerWidth, window.innerHeight );
-			container.appendChild( renderer.domElement );
+	/*controls = new THREE.TrackballControls( camera, renderer.domElement );
+	controls.rotateSpeed = 5.0;
+	controls.zoomSpeed = 2.2;
+	controls.panSpeed = 1;
+	controls.dynamicDampingFactor = 0.3;*/
+	var controls = new THREE.OrbitControls( camera, renderer.domElement );
+	camera.position.set(4.0, 0.7, 2.0);
+	controls.update();
 
-			//
+	window.addEventListener( 'resize', onWindowResize, false );
+}
 
-			controls = new THREE.TrackballControls( camera, renderer.domElement );
-			controls.rotateSpeed = 5.0;
-			controls.zoomSpeed = 2.2;
-			controls.panSpeed = 1;
-			controls.dynamicDampingFactor = 0.3;
+function onWindowResize() {
 
-			window.addEventListener( 'resize', onWindowResize, false );
+	camera.aspect = window.innerWidth / window.innerHeight;
+	camera.updateProjectionMatrix();
 
+	renderer.setSize( window.innerWidth, window.innerHeight );
+
+}
+
+function animate() {
+
+	requestAnimationFrame( animate );
+
+	var time = performance.now();
+	
+	//controls.update();
+	
+	var delta = clock.getDelta() * spawnerOptions.timeScale;
+
+	tick += delta;
+
+	if ( tick < 0 ) tick = 0;
+
+	if ( delta > 0 ) {
+
+		///options.position.x = Math.sin( tick * spawnerOptions.horizontalSpeed ) * 20;
+		//options.position.y = Math.sin( tick * spawnerOptions.verticalSpeed ) * 10;
+		//options.position.z = Math.sin( tick * spawnerOptions.horizontalSpeed + spawnerOptions.verticalSpeed ) * 5;
+
+		for ( var x = 0; x < spawnerOptions.spawnRate * delta; x++ ) {
+			// Yep, that's really it.	Spawning particles is super cheap, and once you spawn them, the rest of
+			// their lifecycle is handled entirely on the GPU, driven by a time uniform updated below
+			
+			// +x = init downstream   +z = far side from peak
+			//particles go from bottom to top
+			options.velocity = new THREE.Vector3();
+			options.position = new THREE.Vector3(-0.07, 0.03, 0.2);
+			options.velocityRandomness = 0.026;
+			options.positionRandomness = 0.28;
+			particleSystem.spawnParticle(options);
+			
+			options.position = new THREE.Vector3(-0.75, 0.14, 0.12);
+			particleSystem.spawnParticle(options);
+			
+			options.position = new THREE.Vector3(-1.05, 0.26, -0.7);
+			particleSystem.spawnParticle(options);
+			
+			options.position = new THREE.Vector3(-0.35, 0.44, -1.05);
+			particleSystem.spawnParticle(options);
+			
+			options.position = new THREE.Vector3(0.45, 0.82, -1.24);
+			particleSystem.spawnParticle(options);
+			
+			options.position = new THREE.Vector3(0.68, 1.0, -1.07);
+			options.velocityRandomness = 0.05 + (0.0 * kenKetsuSen);
+			options.positionRandomness = 0.17;
+			particleSystem.spawnParticle(options);
+			
+			var deltaMod = time * 0.001;
+			var kenKetsuSen = 0.025 * (7*Math.pow(Math.sin(0.5*deltaMod), 2) + 5*Math.cos(0.2*deltaMod) + 10*Math.sin(0.04*x) + 6);
+			options.velocity = new THREE.Vector3(0.0, kenKetsuSen, 0.0);
+			options.position = new THREE.Vector3(0.68, 0.88, -1.07);
+			options.velocityRandomness = 0.1 + (0.01 / kenKetsuSen);
+			options.positionRandomness = 0.05;
+			particleSystem.spawnParticle(options);
 		}
 
-		function onWindowResize() {
+	}
 
-			camera.aspect = window.innerWidth / window.innerHeight;
-			camera.updateProjectionMatrix();
+	particleSystem.update( tick );
 
-			renderer.setSize( window.innerWidth, window.innerHeight );
+	render();
 
-		}
+}
 
-		function animate() {
-
-			requestAnimationFrame( animate );
-
-			controls.update();
-
-			var delta = clock.getDelta() * spawnerOptions.timeScale;
-
-			tick += delta;
-
-			if ( tick < 0 ) tick = 0;
-
-			if ( delta > 0 ) {
-
-				options.position.x = Math.sin( tick * spawnerOptions.horizontalSpeed ) * 20;
-				options.position.y = Math.sin( tick * spawnerOptions.verticalSpeed ) * 10;
-				options.position.z = Math.sin( tick * spawnerOptions.horizontalSpeed + spawnerOptions.verticalSpeed ) * 5;
-
-				for ( var x = 0; x < spawnerOptions.spawnRate * delta; x++ ) {
-
-					// Yep, that's really it.	Spawning particles is super cheap, and once you spawn them, the rest of
-					// their lifecycle is handled entirely on the GPU, driven by a time uniform updated below
-
-					particleSystem.spawnParticle( options );
-
-				}
-
-			}
-
-			particleSystem.update( tick );
-
-			render();
-
-		}
-
-		function render() {
-
-			renderer.render( scene, camera );
-
-		}
+function render() {
+	var time = performance.now();
+	/*var object0 = scene.children[ 0 ];
+	object0.material.uniforms.displaceAmt.value = 2;
+	
+	var object0 = scene.children[ 1 ];
+	object0.material.uniforms.displaceAmt.value = 2;
+	*/
+	oceanMesh.position.set(0.0, 0.03, 0.0);
+	
+	oceanMesh.material.uniforms.in_val.value += 0.002 * spawnerOptions.timeScale;
+	oceanMesh.material.uniforms.turbulenceAmt.value = options.turbulence;
+	oceanMesh.material.uniforms.rollingWaveSize.value = options.rollingWaveSize;
+	oceanMesh.material.uniforms.roughWaveSize.value = options.roughWaveSize;
+	//oceanMesh.material.uniforms.displaceAmt.value = 1.0 * Math.sin(time * 0.001);
+				
+	gui.width = window.innerWidth * 0.25 + 100.0;
+	stats.begin();
+	renderer.render( scene, camera );
+	stats.end();
+	
+	//mirrorSphereCamera.position.set = new THREE.Vector3(0, 10, 0);
+	//oceanMesh.visible = false;
+	//mirrorSphereCamera.update( renderer, scene );
+	//oceanMesh.visible = true;
+	
+}
 
 	</script>
 </body>
